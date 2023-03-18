@@ -28,6 +28,7 @@ import (
 	ethereum "github.com/XinFinOrg/XDPoSChain"
 	"github.com/XinFinOrg/XDPoSChain/common"
 	"github.com/XinFinOrg/XDPoSChain/common/hexutil"
+	"github.com/XinFinOrg/XDPoSChain/core"
 	"github.com/XinFinOrg/XDPoSChain/core/types"
 	"github.com/XinFinOrg/XDPoSChain/ethdb"
 	"github.com/XinFinOrg/XDPoSChain/event"
@@ -416,8 +417,23 @@ func (api *PublicFilterAPI) GetFilterChanges(id rpc.ID) (interface{}, error) {
 			f.hashes = nil
 			return returnHashes(hashes), nil
 		case LogsSubscription:
-			logs := f.logs
-			f.logs = nil
+			// not reeturn the log in the lastest block to bypass issue #232
+			retCount := 0
+			if len(f.logs) > 0 {
+				header, _ := api.backend.HeaderByNumber(context.Background(), rpc.LatestBlockNumber)
+				headNumber := header.Number.Uint64()
+				for _, l := range f.logs {
+					if l.BlockNumber < headNumber {
+						retCount++
+						// update BlockHash to fix #208
+						l.BlockHash = core.GetCanonicalHash(api.chainDb, l.BlockNumber)
+					} else {
+						break
+					}
+				}
+			}
+			logs := f.logs[:retCount]
+			f.logs = f.logs[retCount:]
 			return returnLogs(logs), nil
 		}
 	}
